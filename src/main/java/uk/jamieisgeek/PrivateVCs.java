@@ -1,11 +1,13 @@
 package uk.jamieisgeek;
 
+import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.VoiceChannel;
 import net.dv8tion.jda.api.events.GenericEvent;
 import net.dv8tion.jda.api.events.guild.voice.GuildVoiceJoinEvent;
 import net.dv8tion.jda.api.events.guild.voice.GuildVoiceLeaveEvent;
+import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.EventListener;
 import org.jetbrains.annotations.NotNull;
 import org.simpleyaml.configuration.file.YamlFile;
@@ -56,6 +58,7 @@ public class PrivateVCs implements EventListener {
     }
 
     public void unload() {
+        personalChannels.forEach((member, voiceChannel) -> voiceChannel.delete().complete());
         System.out.println("PrivateVSs unloaded!");
     }
 
@@ -84,6 +87,75 @@ public class PrivateVCs implements EventListener {
             if(channel.getId().equals(personalChannels.get(member).getId())) {
                 personalChannels.get(member).delete().queue();
                 personalChannels.remove(member);
+            }
+        } else if (event instanceof MessageReceivedEvent msgEvent) {
+            if(msgEvent.getAuthor().isBot()) return;
+
+            String[] args = msgEvent.getMessage().getContentRaw().split(" ");
+            Member author = msgEvent.getMember();
+            switch(args[0]) {
+                case "^vcinvite" -> {
+                    if(args.length < 2) {
+                        msgEvent.getChannel().sendMessage("Please specify a user to invite!").queue();
+                        return;
+                    }
+
+                    Member member = msgEvent.getGuild().getMemberById(args[1]);
+                    if(member == null) {
+                        msgEvent.getChannel().sendMessage("Invalid user!").queue();
+                        return;
+                    }
+
+                    if(!author.getVoiceState().inVoiceChannel()) {
+                        msgEvent.getChannel().sendMessage("You must be in a voice channel to invite someone!").queue();
+                        return;
+                    }
+
+                    if(!author.getVoiceState().getChannel().getId().equals(personalChannels.get(author).getId())) {
+                        msgEvent.getChannel().sendMessage("You must be in your personal voice channel to invite someone!").queue();
+                        return;
+                    }
+
+                    member.getVoiceState().getChannel().createPermissionOverride(member).setAllow(Permission.VIEW_CHANNEL, Permission.VOICE_CONNECT).queue();
+                    msgEvent.getChannel().sendMessage("Invited " + member.getAsMention() + " to your voice channel!").queue();
+                }
+
+                case "^vcremove" -> {
+                    if(args.length < 2) {
+                        msgEvent.getChannel().sendMessage("Please specify a user to remove!").queue();
+                        return;
+                    }
+
+                    Member member = msgEvent.getGuild().getMemberById(args[1]);
+                    if(member == null) {
+                        msgEvent.getChannel().sendMessage("Invalid user!").queue();
+                        return;
+                    }
+
+                    if(!author.getVoiceState().inVoiceChannel()) {
+                        msgEvent.getChannel().sendMessage("You must be in a voice channel to remove someone!").queue();
+                        return;
+                    }
+
+                    if(!author.getVoiceState().getChannel().getId().equals(personalChannels.get(author).getId())) {
+                        msgEvent.getChannel().sendMessage("You must be in your personal voice channel to remove someone!").queue();
+                        return;
+                    }
+
+                    if(!member.getVoiceState().inVoiceChannel()) {
+                        msgEvent.getChannel().sendMessage("The user you specified is not in a voice channel!").queue();
+                        return;
+                    }
+
+                    if(!member.getVoiceState().getChannel().getId().equals(personalChannels.get(author).getId())) {
+                        msgEvent.getChannel().sendMessage("The user you specified is not in your voice channel!").queue();
+                        return;
+                    }
+
+                    member.getVoiceState().getChannel().createPermissionOverride(member).setDeny(Permission.VIEW_CHANNEL, Permission.VOICE_CONNECT).queue();
+                    member.getVoiceState().getChannel().getMembers().remove(member);
+                    msgEvent.getChannel().sendMessage("Removed " + member.getAsMention() + " from your voice channel!").queue();
+                }
             }
         }
     }
